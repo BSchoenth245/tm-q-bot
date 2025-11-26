@@ -2,6 +2,7 @@ import { DiscordBot } from './bot.js';
 import { db } from './db/index.js';
 import { logger } from './utils/logger.js';
 import { config } from './config.js';
+import { eloService } from './services/elo.service.js';
 
 async function main() {
   logger.info('Starting Trackmania Scrim Bot...');
@@ -39,6 +40,37 @@ async function main() {
   bot.initializeQueueEvents();
 
   logger.info(`Bot is running in ${config.app.nodeEnv} mode`);
+
+  // Start Elo Polling
+  startEloPolling();
+}
+
+function startEloPolling() {
+  const POLL_INTERVAL = 60 * 1000; // 1 minute
+
+  setInterval(async () => {
+    try {
+      const client = await db.getClient();
+      try {
+        // Find completed scrims that haven't been processed for Elo
+        const result = await client.query<{ id: number }>(
+          `SELECT id FROM scrims
+           WHERE status = 'completed'
+           AND elo_processed = FALSE
+           AND winner_team IS NOT NULL`
+        );
+
+        for (const row of result.rows) {
+          logger.info(`Found unprocessed completed scrim: ${row.id}. Processing Elo...`);
+          await eloService.processMatch(row.id);
+        }
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      logger.error('Error in Elo polling loop:', error);
+    }
+  }, POLL_INTERVAL);
 }
 
 main().catch((error) => {

@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { Scrim, ScrimPlayer, ScrimMap, League, Map } from '../types.js';
+import { Scrim, ScrimPlayer, ScrimMap, League, Map, Player } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { randomUUID } from 'crypto';
@@ -27,8 +27,8 @@ export class ScrimService {
 
       // Create scrim
       const scrimResult = await client.query<Scrim>(
-        `INSERT INTO scrims (scrim_uid, league, status, created_at, checkin_deadline)
-         VALUES ($1, $2, $3, NOW(), $4)
+        `INSERT INTO scrims (scrim_uid, league, status, match_type, created_at, checkin_deadline)
+         VALUES ($1, $2, $3, 'QUEUE', NOW(), $4)
          RETURNING *`,
         [scrimUid, league, 'checking_in', checkinDeadline]
       );
@@ -67,6 +67,62 @@ export class ScrimService {
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error('Error creating scrim:', { league, playerIds, error });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Create a scheduled match
+   */
+  async createScheduledMatch(
+    league: League,
+    players: Player[]
+  ): Promise<Scrim> {
+    if (players.length !== 4) {
+      throw new Error('Match must have exactly 4 players');
+    }
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Generate unique scrim ID
+      const scrimUid = this.generateScrimId();
+
+      // Create scrim with SCHEDULED type and ACTIVE status (no check-in needed)
+      const scrimResult = await client.query<Scrim>(
+        `INSERT INTO scrims (scrim_uid, league, status, match_type, created_at)
+         VALUES ($1, $2, 'active', 'SCHEDULED', NOW())
+         RETURNING *`,
+        [scrimUid, league]
+      );
+
+      const scrim = scrimResult.rows[0];
+
+      // Add players to scrim (auto checked-in)
+      for (const player of players) {
+        await client.query(
+          `INSERT INTO scrim_players (scrim_id, player_id, checked_in, checkin_at)
+           VALUES ($1, $2, TRUE, NOW())`,
+          [scrim.id, player.id]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      logger.info('Scheduled match created', {
+        scrimId: scrim.id,
+        scrimUid,
+        league,
+        playerIds: players.map(p => p.id)
+      });
+
+      return scrim;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error creating scheduled match:', { league, playerIds: players.map(p => p.id), error });
       throw error;
     } finally {
       client.release();

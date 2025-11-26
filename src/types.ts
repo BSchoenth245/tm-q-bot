@@ -4,6 +4,8 @@ export type League = 'Academy' | 'Champion' | 'Master';
 
 export type ScrimStatus = 'checking_in' | 'active' | 'completed' | 'cancelled';
 
+export type MatchType = 'QUEUE' | 'SCHEDULED';
+
 export interface Player {
   id: number;
   discord_id: string;
@@ -46,6 +48,9 @@ export interface Scrim {
   scrim_uid: string;
   league: League;
   status: ScrimStatus;
+  match_type: MatchType;
+  winner_team: number | null;
+  elo_processed: boolean;
   created_at: Date;
   checkin_deadline: Date | null;
   completed_at: Date | null;
@@ -74,6 +79,47 @@ export interface ScrimResult {
   total_time: number | null;
   replay_file_url: string | null;
   submitted_at: Date;
+}
+
+// Elo & Stats Types
+
+export interface EloRating {
+  id: number;
+  player_id: number;
+  league: League;
+  rating: number;
+  wins: number;
+  losses: number;
+  updated_at: Date;
+}
+
+export interface EloHistory {
+  id: number;
+  player_id: number;
+  scrim_id: number;
+  old_rating: number;
+  new_rating: number;
+  change_amount: number;
+  created_at: Date;
+}
+
+export interface MatchPlayerStats {
+  id: number;
+  scrim_id: number;
+  map_id: number | null;
+  player_id: number;
+  team_id: number;
+  points: number;
+  is_finished: boolean;
+  is_dnf: boolean;
+  round_points: number[];
+  nb_respawns: number;
+  respawn_times: number[];
+  best_time: number | null;
+  cp_times: number[];
+  respawn_time_loss: number[];
+  nb_respawns_by_cp: number[];
+  created_at: Date;
 }
 
 // Queue-related types

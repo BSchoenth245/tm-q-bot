@@ -88,6 +88,37 @@ export const data = new SlashCommandBuilder()
           .setDescription('The user to view dodge history for')
           .setRequired(true)
       )
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('create-match')
+      .setDescription('Create a scheduled match')
+      .addStringOption(option =>
+        option
+          .setName('league')
+          .setDescription('The league for this match')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Academy', value: 'Academy' },
+            { name: 'Champion', value: 'Champion' },
+            { name: 'Master', value: 'Master' }
+          )
+      )
+      .addUserOption(option => option.setName('p1').setDescription('Player 1').setRequired(true))
+      .addUserOption(option => option.setName('p2').setDescription('Player 2').setRequired(true))
+      .addUserOption(option => option.setName('p3').setDescription('Player 3').setRequired(true))
+      .addUserOption(option => option.setName('p4').setDescription('Player 4').setRequired(true))
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('calc-elo')
+      .setDescription('Manually trigger Elo calculation for a match')
+      .addStringOption(option =>
+        option
+          .setName('scrim_id')
+          .setDescription('The Scrim ID (UUID) to calculate Elo for')
+          .setRequired(true)
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -109,6 +140,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         break;
       case 'dodges':
         await handleDodges(interaction);
+        break;
+      case 'create-match':
+        await handleCreateMatch(interaction);
+        break;
+      case 'calc-elo':
+        await handleCalcElo(interaction);
         break;
       default:
         await interaction.reply({
@@ -302,4 +339,100 @@ async function handleDodges(interaction: ChatInputCommandInteraction) {
   embed.setTimestamp();
 
   await interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+import { scrimService } from '../services/scrim.service.js';
+import { eloService } from '../services/elo.service';
+
+async function handleCreateMatch(interaction: ChatInputCommandInteraction) {
+  const league = interaction.options.getString('league', true) as League;
+  const p1 = interaction.options.getUser('p1', true);
+  const p2 = interaction.options.getUser('p2', true);
+  const p3 = interaction.options.getUser('p3', true);
+  const p4 = interaction.options.getUser('p4', true);
+
+  const discordIds = [p1.id, p2.id, p3.id, p4.id];
+
+  // Ensure all players are registered
+  const players = [];
+  for (const discordId of discordIds) {
+    const player = await playerService.getByDiscordId(discordId);
+    if (!player) {
+      await interaction.reply({
+        content: `❌ User <@${discordId}> is not registered in the system.`,
+        ephemeral: true
+      });
+      return;
+    }
+    players.push(player);
+  }
+
+  try {
+    const scrim = await scrimService.createScheduledMatch(league, players);
+
+    await interaction.reply({
+      content: `✅ Scheduled Match Created!\nID: \`${scrim.scrim_uid}\`\nLeague: ${league}\nPlayers: ${players.map(p => p.discord_username).join(', ')}`,
+      ephemeral: false
+    });
+  } catch (error) {
+    logger.error('Error creating scheduled match:', error);
+    await interaction.reply({
+      content: '❌ Failed to create scheduled match.',
+      ephemeral: true
+    });
+  }
+}
+
+async function handleCalcElo(interaction: ChatInputCommandInteraction) {
+  const scrimUid = interaction.options.getString('scrim_id', true);
+
+  try {
+    // We need to look up the internal ID from the UID first
+    const scrim = await scrimService.getByUid(scrimUid);
+
+    if (!scrim) {
+      await interaction.reply({
+        content: `❌ Scrim with ID \`${scrimUid}\` not found.`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (scrim.status !== 'completed') {
+      await interaction.reply({
+        content: `❌ Scrim \`${scrimUid}\` is not marked as completed yet.`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (scrim.elo_processed) {
+      await interaction.reply({
+        content: `⚠️ Elo for scrim \`${scrimUid}\` has already been processed.`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.deferReply();
+
+    await eloService.processMatch(scrim.id);
+
+    await interaction.editReply({
+      content: `✅ Elo calculation completed for scrim \`${scrimUid}\`.`
+    });
+
+  } catch (error) {
+    logger.error('Error calculating Elo:', error);
+    if (interaction.deferred) {
+      await interaction.editReply({
+        content: '❌ An error occurred while calculating Elo.'
+      });
+    } else {
+      await interaction.reply({
+        content: '❌ An error occurred while calculating Elo.',
+        ephemeral: true
+      });
+    }
+  }
 }
