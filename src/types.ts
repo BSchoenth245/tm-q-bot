@@ -140,8 +140,8 @@ export interface MapWithPlayCount {
   playCount: number;
 }
 
-// Form generation types
-export interface FormData {
+// Web App URL generation types
+export interface WebAppUrlData {
   scrimId: string;
   players: string[];
   maps: string[];
