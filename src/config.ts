@@ -22,17 +22,13 @@ interface Config {
     dodgeBan3: number;
     dodgeWindow: number;
   };
-  googleForms: {
-    baseUrl: string;
-    scrimIdEntry: string;
-    playersEntry: string;
-    timestampEntry: string;
-    mapsEntry: string;
-  };
   app: {
     nodeEnv: string;
     port: number;
     logLevel: string;
+  };
+  replay: {
+    submissionUrl: string;
   };
   leagues: string[];
 }
@@ -75,17 +71,13 @@ export const config: Config = {
     dodgeBan3: getEnvNumber('DODGE_BAN_3', 7200),
     dodgeWindow: getEnvNumber('DODGE_WINDOW', 86400),
   },
-  googleForms: {
-    baseUrl: getEnvVar('GOOGLE_FORM_BASE_URL'),
-    scrimIdEntry: getEnvVar('GOOGLE_FORM_SCRIM_ID_ENTRY'),
-    playersEntry: getEnvVar('GOOGLE_FORM_PLAYERS_ENTRY'),
-    timestampEntry: getEnvVar('GOOGLE_FORM_TIMESTAMP_ENTRY'),
-    mapsEntry: getEnvVar('GOOGLE_FORM_MAPS_ENTRY'),
-  },
   app: {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     port: getEnvNumber('PORT', 3000),
     logLevel: getEnvVar('LOG_LEVEL', 'info'),
+  },
+  replay: {
+    submissionUrl: getEnvVar('REPLAY_SUBMISSION_URL'),
   },
   leagues: getEnvVar('LEAGUES', 'Academy,Champion,Master').split(','),
 };

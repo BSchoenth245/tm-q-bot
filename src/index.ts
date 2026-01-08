@@ -37,7 +37,7 @@ async function main() {
   await bot.start();
 
   // Initialize queue event handlers (after bot is logged in)
-  bot.initializeQueueEvents();
+  await bot.initializeQueueEvents();
 
   logger.info(`Bot is running in ${config.app.nodeEnv} mode`);
 

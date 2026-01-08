@@ -3,8 +3,12 @@ import { Scrim, ScrimPlayer, ScrimMap, League, Map, Player } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { randomUUID } from 'crypto';
+import { EventEmitter } from 'events';
 
-export class ScrimService {
+export class ScrimService extends EventEmitter {
+  constructor() {
+    super();
+  }
   /**
    * Create a new scrim
    */
@@ -250,13 +254,32 @@ export class ScrimService {
    */
   async activateScrim(scrimId: number): Promise<void> {
     try {
+      // Get scrim details before activating
+      const scrim = await this.getById(scrimId);
+      if (!scrim) {
+        throw new Error(`Scrim ${scrimId} not found`);
+      }
+
+      // Get player IDs
+      const scrimPlayers = await this.getScrimPlayers(scrimId);
+      const playerIds = scrimPlayers.map(sp => sp.player_id);
+
       await db.query(
         `UPDATE scrims
          SET status = 'active'
          WHERE id = $1`,
         [scrimId]
       );
+      
       logger.info('Scrim activated', { scrimId });
+
+      // Emit scrim activation event for replay submission instructions
+      this.emit('scrimActivated', {
+        scrimId,
+        scrimUid: scrim.scrim_uid,
+        playerIds,
+        league: scrim.league
+      });
     } catch (error) {
       logger.error('Error activating scrim:', { scrimId, error });
       throw error;
@@ -286,13 +309,32 @@ export class ScrimService {
    */
   async completeScrim(scrimId: number): Promise<void> {
     try {
+      // Get scrim details before completing
+      const scrim = await this.getById(scrimId);
+      if (!scrim) {
+        throw new Error(`Scrim ${scrimId} not found`);
+      }
+
+      // Get player IDs
+      const scrimPlayers = await this.getScrimPlayers(scrimId);
+      const playerIds = scrimPlayers.map(sp => sp.player_id);
+
       await db.query(
         `UPDATE scrims
          SET status = 'completed', completed_at = NOW()
          WHERE id = $1`,
         [scrimId]
       );
+      
       logger.info('Scrim completed', { scrimId });
+
+      // Emit scrim completion event for replay submission
+      this.emit('scrimCompleted', {
+        scrimId,
+        scrimUid: scrim.scrim_uid,
+        playerIds,
+        league: scrim.league
+      });
     } catch (error) {
       logger.error('Error completing scrim:', { scrimId, error });
       throw error;

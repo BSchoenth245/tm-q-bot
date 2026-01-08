@@ -119,6 +119,17 @@ export const data = new SlashCommandBuilder()
           .setDescription('The Scrim ID (UUID) to calculate Elo for')
           .setRequired(true)
       )
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('complete-scrim')
+      .setDescription('Mark a scrim as completed and trigger replay submission')
+      .addStringOption(option =>
+        option
+          .setName('scrim_id')
+          .setDescription('The Scrim ID (UUID) to complete')
+          .setRequired(true)
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -146,6 +157,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         break;
       case 'calc-elo':
         await handleCalcElo(interaction);
+        break;
+      case 'complete-scrim':
+        await handleCompleteScrim(interaction);
         break;
       default:
         await interaction.reply({
@@ -434,5 +448,49 @@ async function handleCalcElo(interaction: ChatInputCommandInteraction) {
         ephemeral: true
       });
     }
+  }
+}
+
+async function handleCompleteScrim(interaction: ChatInputCommandInteraction) {
+  const scrimUid = interaction.options.getString('scrim_id', true);
+
+  try {
+    const scrim = await scrimService.getByUid(scrimUid);
+
+    if (!scrim) {
+      await interaction.reply({
+        content: `❌ Scrim with ID \`${scrimUid}\` not found.`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (scrim.status === 'completed') {
+      await interaction.reply({
+        content: `⚠️ Scrim \`${scrimUid}\` is already completed.`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    await scrimService.completeScrim(scrim.id);
+
+    await interaction.reply({
+      content: `✅ Scrim \`${scrimUid}\` marked as completed. Replay submission notifications sent to players.`,
+      ephemeral: false
+    });
+
+    logger.info('Admin completed scrim', {
+      adminId: interaction.user.id,
+      scrimId: scrim.id,
+      scrimUid
+    });
+
+  } catch (error) {
+    logger.error('Error completing scrim:', error);
+    await interaction.reply({
+      content: '❌ An error occurred while completing the scrim.',
+      ephemeral: true
+    });
   }
 }

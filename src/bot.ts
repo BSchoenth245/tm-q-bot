@@ -25,9 +25,19 @@ export class DiscordBot {
     logger.info(`Commands loaded in bot: ${Array.from(this.commands.keys()).join(', ')}`);
   }
 
-  initializeQueueEvents(): void {
+  async initializeQueueEvents(): Promise<void> {
     // Initialize queue event handler (stored in closure, not as instance variable)
-    new QueueEventHandler(this.client);
+    const queueEventHandler = new QueueEventHandler(this.client);
+    
+    // Connect scrim service events to queue event handler
+    const { scrimService } = await import('./services/scrim.service.js');
+    scrimService.on('scrimCompleted', (event) => {
+      queueEventHandler.handleScrimCompleted(event);
+    });
+    scrimService.on('scrimActivated', (event) => {
+      queueEventHandler.handleScrimActivated(event);
+    });
+    
     logger.info('Queue event handlers initialized');
   }
 

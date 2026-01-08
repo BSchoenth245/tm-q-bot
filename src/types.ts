@@ -139,11 +139,3 @@ export interface MapWithPlayCount {
   map: Map;
   playCount: number;
 }
-
-// Form generation types
-export interface FormData {
-  scrimId: string;
-  players: string[];
-  maps: string[];
-  timestamp: string;
-}

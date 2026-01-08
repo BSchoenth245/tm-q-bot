@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { Scrim, ScrimResult, EloRating, League } from '../types.js';
+import { Scrim, EloRating, League } from '../types.js';
 import { logger } from '../utils/logger.js';
 
 export class EloService {

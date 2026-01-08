@@ -1,6 +1,5 @@
 import { Client, EmbedBuilder, TextChannel } from 'discord.js';
 import { QueuePopEvent, queueService } from '../services/queue.service.js';
-import { FormGenerator } from '../utils/formGenerator.js';
 import { logger } from '../utils/logger.js';
 
 export class QueueEventHandler {
@@ -19,6 +18,16 @@ export class QueueEventHandler {
       await this.handleCheckInTimeout(event);
     });
 
+    // Listen for scrim completion events
+    queueService.on('scrimCompleted', async (event: any) => {
+      await this.handleScrimCompleted(event);
+    });
+
+    // Listen for scrim activation events (all players checked in)
+    queueService.on('scrimActivated', async (event: any) => {
+      await this.handleScrimActivated(event);
+    });
+
     logger.info('Queue event handlers initialized');
   }
 
@@ -34,14 +43,6 @@ export class QueueEventHandler {
       playerCount: players.length,
       league: scrim.league
     });
-
-    // Generate the Google Form URL with pre-filled data
-    const formData = FormGenerator.createFormData(
-      scrim.scrim_uid,
-      players.map(p => p.discord_username),
-      maps.map(m => m.name)
-    );
-    const formUrl = FormGenerator.generateFormUrl(formData);
 
     // Create embed with scrim details
     const embed = new EmbedBuilder()
@@ -64,11 +65,6 @@ export class QueueEventHandler {
           value: scrim.checkin_deadline
             ? `<t:${Math.floor(new Date(scrim.checkin_deadline).getTime() / 1000)}:R>`
             : '5 minutes',
-          inline: false
-        },
-        {
-          name: '📝 Submit Results',
-          value: `[Click here to submit match results](${formUrl})`,
           inline: false
         }
       )
@@ -197,6 +193,140 @@ export class QueueEventHandler {
       } catch (error) {
         logger.error('Failed to send match cancelled DM', {
           playerId,
+          error
+        });
+      }
+    }
+  }
+
+  /**
+   * Handle scrim activation - send replay submission instructions to players
+   */
+  public async handleScrimActivated(event: {
+    scrimId: number;
+    scrimUid: string;
+    playerIds: number[];
+    league: string;
+  }): Promise<void> {
+    const { scrimId, scrimUid, playerIds, league } = event;
+
+    logger.info('Handling scrim activation', {
+      scrimId,
+      scrimUid,
+      playerCount: playerIds.length,
+      league
+    });
+
+    const replaySubmissionUrl = process.env.REPLAY_SUBMISSION_URL;
+
+    // Create embed for replay submission instructions
+    const embed = new EmbedBuilder()
+      .setColor(0x00FF00)
+      .setTitle('🎮 Match is Starting!')
+      .setDescription(`**${league} League** - Scrim ID: \`${scrimUid}\``)
+      .addFields(
+        {
+          name: '📝 After Your Match',
+          value: `After your match is completed, please follow this link and submit your replay file:\n[Submit Replay File](${replaySubmissionUrl})`,
+          inline: false
+        }
+      )
+      .setFooter({ text: 'Good luck and have fun!' })
+      .setTimestamp();
+
+    // Send DM to each player
+    for (const playerId of playerIds) {
+      try {
+        const { playerService } = await import('../services/player.service.js');
+        const player = await playerService.getById(playerId);
+        if (!player) continue;
+
+        const user = await this.client.users.fetch(player.discord_id);
+
+        await user.send({
+          content: '✅ **ALL PLAYERS CHECKED IN** ✅\n\nYour match is ready to start!',
+          embeds: [embed]
+        });
+
+        logger.info('Sent match start DM with replay instructions', {
+          playerId,
+          discordId: player.discord_id,
+          scrimUid
+        });
+      } catch (error) {
+        logger.error('Failed to send match start DM', {
+          playerId,
+          scrimUid,
+          error
+        });
+      }
+    }
+  }
+
+  /**
+   * Handle scrim completion - send replay submission link to players
+   */
+  public async handleScrimCompleted(event: {
+    scrimId: number;
+    scrimUid: string;
+    playerIds: number[];
+    league: string;
+  }): Promise<void> {
+    const { scrimId, scrimUid, playerIds, league } = event;
+
+    logger.info('Handling scrim completion', {
+      scrimId,
+      scrimUid,
+      playerCount: playerIds.length,
+      league
+    });
+
+    // Generate replay submission URL with scrim ID
+    const replaySubmissionUrl = `${process.env.REPLAY_SUBMISSION_URL}?scrim=${scrimUid}`;
+
+    // Create embed for replay submission
+    const embed = new EmbedBuilder()
+      .setColor(0x0099FF)
+      .setTitle('🏁 Scrim Completed!')
+      .setDescription(`**${league} League** - Scrim ID: \`${scrimUid}\``)
+      .addFields(
+        {
+          name: '📁 Submit Your Replay',
+          value: `Please submit your replay file using the link below:\n[Submit Replay File](${replaySubmissionUrl})`,
+          inline: false
+        },
+        {
+          name: '⏰ Deadline',
+          value: 'Please submit within 24 hours of match completion',
+          inline: false
+        }
+      )
+      .setFooter({ text: 'Thank you for playing!' })
+      .setTimestamp();
+
+    // Send DM to each player
+    for (const playerId of playerIds) {
+      try {
+        const { playerService } = await import('../services/player.service.js');
+        const player = await playerService.getById(playerId);
+        if (!player) continue;
+
+        const user = await this.client.users.fetch(player.discord_id);
+
+        await user.send({
+          content: '🎉 **SCRIM COMPLETED** 🎉\n\nPlease submit your replay file!',
+          embeds: [embed]
+        });
+
+        logger.info('Sent replay submission DM', {
+          playerId,
+          discordId: player.discord_id,
+          scrimUid
+        });
+      } catch (error) {
+        logger.error('Failed to send replay submission DM', {
+          playerId,
+          scrimUid,
           error
         });
       }
